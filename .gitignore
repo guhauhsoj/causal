@@ -1,3 +1,6 @@
+# ignore  folder
+/ignore/
+
 # Mac os Files
 .DS_Store
 
