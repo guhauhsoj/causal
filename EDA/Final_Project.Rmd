@@ -21,12 +21,19 @@ Include important covariates: Median Household income, % of households who recie
 
 ```{r}
 #list covariates, response and treatment
-myvars <- c("e.0.","PovertyRate","LA1and10","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+race <- c("TractWhiteper","TractHispanicper")
+myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
 
 
 #normalize SNAP as a % of hoursing units in the tract adn % of houses with no vehicle in the tract
 USDA_Data$TractSNAPper = USDA_Data$TractSNAP / USDA_Data$OHU2010
 USDA_Data$TractHUNVper = USDA_Data$TractHUNV / USDA_Data$OHU2010
+
+USDA_Data$TractBlackper = USDA_Data$TractBlack/USDA_Data$POP2010
+USDA_Data$TractWhiteper = USDA_Data$TractWhite/USDA_Data$POP2010
+USDA_Data$TractHispanicper = USDA_Data$TractHispanic/USDA_Data$POP2010
+
+
 
 #create new data and filter NA,NAN and Inf
 USDA_new <- USDA_Data[myvars]
@@ -45,7 +52,9 @@ Assume strong ignorability
 Outcome regression Model wiht Lins method of including interaction terms:
 
 Function for point estimate and bootstrap inference:
+
 ```{r}
+
 
 Regression_estimate <- function(z,y,x){
   
@@ -59,6 +68,7 @@ Regression_estimate <- function(z,y,x){
   
   regression_ate <- lm(y ~ new_covars)
   
+  
   coef_treatment <- regression_ate$coefficients[2]
   coef_interact <- regression_ate$coefficients[3:(n+2)]
  
@@ -68,6 +78,7 @@ Regression_estimate <- function(z,y,x){
   return(ate.reg)
   
 }
+
 
 Regression_bootstrap <- function(z,y,x, n.boot = 500){
   
@@ -91,12 +102,14 @@ Regression_bootstrap <- function(z,y,x, n.boot = 500){
   
 }
 
+
 ```
 
 
 ```{r}
 
-covars <- c("PovertyRate", "MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
+
+covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
 
 #Adding interaction terms and treatment
 
@@ -107,7 +120,7 @@ y <- USDA_new$e.0.
 
 point.est <- Regression_estimate(z,y,x)
 
-results <- Regression_bootstrap(z,y,x,1000)
+results <- Regression_bootstrap(z,y,x)
 
 c(results[1,1]-1.96*results[2,1], results[1,1]+1.96*results[2,1])
 
@@ -279,6 +292,9 @@ Doubly Robust estimator:
 
 
 ```{r}
+
+
+
 
 
 
