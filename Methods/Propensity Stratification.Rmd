@@ -1,0 +1,75 @@
+---
+title: "Propensity Stratification"
+output: html_document
+---
+```{r}
+library(ggplot2)
+setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/USDA-Data")
+
+#USDA Data on food accessability by census tract
+USDA <- read.csv("USDA.csv")
+#CDC Data on average life expectancy by census tract
+life_exp <- read.csv("US_A.csv")
+
+#removes some track data do to missing observations in life expectancy data, 74,000 rows to 65000 rows
+USDA_Data <- dplyr::inner_join(life_exp, USDA, by = c("Tract.ID"="CensusTract") )
+
+```
+
+## Preprocessing and covariate selection
+
+Include important covariates: Median Household income, % of households who recieve SNAP, % who have access to a vehicle. Assume strong ignorability given these covariates
+
+```{r}
+#list covariates, response and treatment
+race <- c("TractWhiteper","TractHispanicper")
+myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+
+
+#normalize SNAP as a % of hoursing units in the tract, % of houses with no vehicle in the tract and % of each race in tract
+USDA_Data$TractSNAPper = USDA_Data$TractSNAP / USDA_Data$OHU2010
+USDA_Data$TractHUNVper = USDA_Data$TractHUNV / USDA_Data$OHU2010
+
+USDA_Data$TractBlackper = USDA_Data$TractBlack/USDA_Data$POP2010
+USDA_Data$TractWhiteper = USDA_Data$TractWhite/USDA_Data$POP2010
+USDA_Data$TractHispanicper = USDA_Data$TractHispanic/USDA_Data$POP2010
+
+
+
+#create new data and filter NA,NAN and Inf
+USDA_new <- USDA_Data[myvars]
+#make sure if its not systematically missing data
+USDA_new <- USDA_new[Reduce(`&`, lapply(USDA_new, function(x) !is.na(x)  & is.finite(x))),]
+USDA_new <- USDA_new[USDA_new$MedianFamilyIncome !=0,]
+USDA_new <- USDA_new[USDA_new$TractSNAPper <= 1 & USDA_new$TractHUNVper <= 1,]
+
+
+```
+
+# Propensity Score stratification
+
+```{r}
+
+Neyman_SRE = function(z, y, x)
+{
+  xlevels = unique(x)
+  K       = length(xlevels)
+  PiK     = rep(0, K)
+  TauK    = rep(0, K)
+  varK    = rep(0, K)
+  for(k in 1:K)
+  {
+    xk         = xlevels[k]
+    zk         = z[x == xk]
+    yk         = y[x == xk]
+    PiK[k]     = length(zk)/length(z)
+    TauK[k]    = mean(yk[zk==1]) - mean(yk[zk==0])
+    varK[k]    = var(yk[zk==1])/sum(zk) + 
+      var(yk[zk==0])/sum(1 - zk)
+  }
+  
+  return(c(sum(PiK*TauK), sqrt(sum(PiK^2*varK))))
+}
+
+```
+

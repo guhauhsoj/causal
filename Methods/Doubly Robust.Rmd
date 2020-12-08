@@ -1,0 +1,205 @@
+---
+title: "Doubly Robust"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/USDA-Data")
+
+#USDA Data on food accessability by census tract
+USDA <- read.csv("USDA.csv")
+#CDC Data on average life expectancy by census tract
+life_exp <- read.csv("US_A.csv")
+
+#removes some track data do to missing observations in life expectancy data, 74,000 rows to 65000 rows
+USDA_Data <- dplyr::inner_join(life_exp, USDA, by = c("Tract.ID"="CensusTract") )
+
+```
+
+## Preprocessing and covariate selection
+
+Include important covariates: Median Household income, % of households who recieve SNAP, % who have access to a vehicle. Assume strong ignorability given these covariates
+
+```{r}
+#list covariates, response and treatment
+race <- c("TractWhiteper","TractHispanicper")
+myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+
+
+#normalize SNAP as a % of hoursing units in the tract, % of houses with no vehicle in the tract and % of each race in tract
+USDA_Data$TractSNAPper = USDA_Data$TractSNAP / USDA_Data$OHU2010
+USDA_Data$TractHUNVper = USDA_Data$TractHUNV / USDA_Data$OHU2010
+
+USDA_Data$TractBlackper = USDA_Data$TractBlack/USDA_Data$POP2010
+USDA_Data$TractWhiteper = USDA_Data$TractWhite/USDA_Data$POP2010
+USDA_Data$TractHispanicper = USDA_Data$TractHispanic/USDA_Data$POP2010
+
+
+
+#create new data and filter NA,NAN and Inf
+USDA_new <- USDA_Data[myvars]
+#make sure if its not systematically missing data
+USDA_new <- USDA_new[Reduce(`&`, lapply(USDA_new, function(x) !is.na(x)  & is.finite(x))),]
+USDA_new <- USDA_new[USDA_new$MedianFamilyIncome !=0,]
+USDA_new <- USDA_new[USDA_new$TractSNAPper <= 1 & USDA_new$TractHUNVper <= 1,]
+
+
+
+```
+
+## Doubly Robust estimator:
+
+Loading in the functions for doubly robust analysis
+```{r}
+
+
+OS_est = function(z, y, x, out.family = gaussian, 
+                  truncpscore = c(0, 1))
+{
+     ## fitted propensity score
+     pscore   = glm(z ~ x, family = binomial)$fitted.values
+     pscore   = pmax(truncpscore[1], pmin(truncpscore[2], pscore))
+     
+     ## fitted potential outcomes
+     outcome1 = glm(y ~ x, weights = z, 
+                    family = out.family)$fitted.values
+     outcome0 = glm(y ~ x, weights = (1 - z), 
+                    family = out.family)$fitted.values
+     
+     ## regression imputation estimator
+     ace.reg  = mean(outcome1 - outcome0) 
+     ## IPW estimators
+     ace.ipw0 = mean(z*y/pscore - (1 - z)*y/(1 - pscore))
+     ace.ipw  = mean(z*y/pscore)/mean(z/pscore) - 
+                   mean((1 - z)*y/(1 - pscore))/mean((1 - z)/(1 - pscore))
+     ## doubly robust estimator
+     res1     = y - outcome1
+     res0     = y - outcome0
+     ace.dr   = ace.reg + mean(z*res1/pscore - (1 - z)*res0/(1 - pscore))
+
+     return(c(ace.reg, ace.ipw0, ace.ipw, ace.dr))     
+}
+
+
+OS_ATE = function(z, y, x, n.boot = 2*10^2,
+                     out.family = gaussian, truncpscore = c(0, 1))
+{
+     point.est  = OS_est(z, y, x, out.family, truncpscore)
+     
+     ## nonparametric bootstrap
+     n.sample   = length(z)
+     x          = as.matrix(x)
+     boot.est   = replicate(n.boot, 
+                  {id.boot = sample(1:n.sample, n.sample, replace = TRUE)
+                  OS_est(z[id.boot], y[id.boot], x[id.boot, ], 
+                         out.family, truncpscore)})
+
+     boot.se    = apply(boot.est, 1, sd)
+     
+     res        = rbind(point.est, boot.se)
+     rownames(res) = c("est", "se")
+     colnames(res) = c("reg", "HT", "Hajek", "DR")
+     
+     return(res)
+}
+
+
+
+
+```
+
+Non-truncated doubly robust estimator
+```{r}
+covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
+
+x <- USDA_new[covars]
+z <- USDA_new$LA1and10
+y <- USDA_new$e.0.
+
+x <- scale(x)
+
+#not truncated
+results <- OS_ATE(z,y,x)
+
+dr <- results[,4]
+
+c(dr[1]-1.96*dr[2],dr[1]+1.96*dr[2])
+
+Bcheck = sapply(1:dim(x)[2],
+                FUN = function(px){
+                  OS_ATE(z, x[, px], x)[, 4]
+                })
+
+
+dat_balance = data.frame(est = Bcheck[1, ],
+                         upper = Bcheck[1, ] + 1.96*Bcheck[2, ],
+                         lower = Bcheck[1, ] - 1.96*Bcheck[2, ],
+                         cov = factor(1:ncol(x)))
+ggplot(dat_balance) + 
+  geom_errorbar(aes(x = cov,
+                    ymin = lower,
+                    ymax = upper),
+                alpha = 0.6) + 
+  geom_point(aes(x = cov,
+                 y = est),
+             alpha = 0.6) +
+  geom_hline(aes(yintercept = 0),
+             alpha = 0.3) + 
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank()) +
+  xlab("balance check based on weighting")
+
+
+```
+
+Truncated doubly robust
+
+```{r}
+
+trunc.list = list(trunc0 = c(0,1), 
+                  trunc.01 = c(0.01, 0.99), 
+                  trunc.05 = c(0.05, 0.95), 
+                  trunc.1 = c(0.1, 0.9))
+trunc.est = lapply(trunc.list,
+                   function(t){
+                     est = OS_ATE(z, y, x, truncpscore = t)
+                     round(est, 3)
+                   })
+trunc.est
+
+
+## balance check based on Hajek
+Bcheck = sapply(1:dim(x)[2],
+                FUN = function(px){
+                  OS_ATE(z, x[, px], x,truncpscore = c(.05,.95))[, 4]
+                })
+
+
+dat_balance = data.frame(est = Bcheck[1, ],
+                         upper = Bcheck[1, ] + 1.96*Bcheck[2, ],
+                         lower = Bcheck[1, ] - 1.96*Bcheck[2, ],
+                         cov = factor(1:ncol(x)))
+
+
+ggplot(dat_balance) + 
+  geom_errorbar(aes(x = cov,
+                    ymin = lower,
+                    ymax = upper),
+                alpha = 0.6) + 
+  geom_point(aes(x = cov,
+                 y = est),
+             alpha = 0.6) +
+  geom_hline(aes(yintercept = 0),
+             alpha = 0.3) + 
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank()) +
+  xlab("balance check based on weighting")
+
+
+
+```

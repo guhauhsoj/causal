@@ -1,0 +1,128 @@
+---
+title: "Regression Outcome"
+output: html_document
+---
+```{r}
+library(ggplot2)
+setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/USDA-Data")
+
+#USDA Data on food accessability by census tract
+USDA <- read.csv("USDA.csv")
+#CDC Data on average life expectancy by census tract
+life_exp <- read.csv("US_A.csv")
+
+#removes some track data do to missing observations in life expectancy data, 74,000 rows to 65000 rows
+USDA_Data <- dplyr::inner_join(life_exp, USDA, by = c("Tract.ID"="CensusTract") )
+
+```
+
+## Preprocessing and covariate selection
+
+Include important covariates: Median Household income, % of households who recieve SNAP, % who have access to a vehicle. Assume strong ignorability given these covariates
+
+```{r}
+#list covariates, response and treatment
+race <- c("TractWhiteper","TractHispanicper")
+myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+
+
+#normalize SNAP as a % of hoursing units in the tract, % of houses with no vehicle in the tract and % of each race in tract
+USDA_Data$TractSNAPper = USDA_Data$TractSNAP / USDA_Data$OHU2010
+USDA_Data$TractHUNVper = USDA_Data$TractHUNV / USDA_Data$OHU2010
+
+USDA_Data$TractBlackper = USDA_Data$TractBlack/USDA_Data$POP2010
+USDA_Data$TractWhiteper = USDA_Data$TractWhite/USDA_Data$POP2010
+USDA_Data$TractHispanicper = USDA_Data$TractHispanic/USDA_Data$POP2010
+
+
+
+#create new data and filter NA,NAN and Inf
+USDA_new <- USDA_Data[myvars]
+#make sure if its not systematically missing data
+USDA_new <- USDA_new[Reduce(`&`, lapply(USDA_new, function(x) !is.na(x)  & is.finite(x))),]
+USDA_new <- USDA_new[USDA_new$MedianFamilyIncome !=0,]
+USDA_new <- USDA_new[USDA_new$TractSNAPper <= 1 & USDA_new$TractHUNVper <= 1,]
+
+
+
+```
+
+## Outcome regression/ Average marginal effect
+
+Assume strong ignorability
+Outcome regression Model wiht Lins method of including interaction terms:
+
+Function for point estimate and bootstrap inference:
+
+```{r}
+
+
+Regression_estimate <- function(z,y,x){
+  
+  
+  x <- scale(x)
+  interact <- x*z
+  n <- ncol(interact)
+  
+  new_covars <- as.matrix(cbind(z,interact,x))
+  x <- as.matrix(x)
+  
+  regression_ate <- lm(y ~ new_covars)
+  
+  
+  coef_treatment <- regression_ate$coefficients[2]
+  coef_interact <- regression_ate$coefficients[3:(n+2)]
+ 
+  
+  ate.reg <- coef_treatment + coef_interact %*% colMeans(x)
+  
+  return(ate.reg)
+  
+}
+
+
+Regression_bootstrap <- function(z,y,x, n.boot = 500){
+  
+  point.est  = Regression_estimate(z,y, x)
+  
+  ## nonparametric bootstrap
+  n.sample   = length(y)
+  x          = as.matrix(x)
+  boot.est   = replicate(n.boot, 
+                         {id.boot = sample(1:n.sample, n.sample, replace = TRUE)
+                         Regression_estimate(z[id.boot],y[id.boot], x[id.boot, ])})
+  
+  
+  boot.se    = sd(boot.est)
+  
+  res = rbind(point.est, boot.se)
+  rownames(res) = c("est", "se")
+  colnames(res) = c("Lins.est")
+  
+  return(res)
+  
+}
+
+
+```
+
+
+```{r}
+
+
+covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
+
+#Adding interaction terms and treatment
+
+x <- USDA_new[covars]
+z <- USDA_new$LA1and10
+y <- USDA_new$e.0.
+
+
+point.est <- Regression_estimate(z,y,x)
+
+results <- Regression_bootstrap(z,y,x)
+
+c(results[1,1]-1.96*results[2,1], results[1,1]+1.96*results[2,1])
+
+```
