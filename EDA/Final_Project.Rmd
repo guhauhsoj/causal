@@ -7,11 +7,7 @@ output: pdf_document
 library(ggplot2)
 setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/USDA-Data")
 
-USDA <- read.csv("USDA.csv")
-life_exp <- read.csv("US_A.csv")
-
-#removes some track data do to missing observations in life expectancy data
-USDA_Data <- dplyr::inner_join(life_exp, USDA, by = c("Tract.ID"="CensusTract") )
+USDA_Data <- read.csv("USDA.csv")
 
 ```
 
@@ -21,19 +17,12 @@ Include important covariates: Median Household income, % of households who recie
 
 ```{r}
 #list covariates, response and treatment
-race <- c("TractWhiteper","TractHispanicper")
-myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+myvars <- c("PovertyRate","LA1and10","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
 
 
 #normalize SNAP as a % of hoursing units in the tract adn % of houses with no vehicle in the tract
 USDA_Data$TractSNAPper = USDA_Data$TractSNAP / USDA_Data$OHU2010
 USDA_Data$TractHUNVper = USDA_Data$TractHUNV / USDA_Data$OHU2010
-
-USDA_Data$TractBlackper = USDA_Data$TractBlack/USDA_Data$POP2010
-USDA_Data$TractWhiteper = USDA_Data$TractWhite/USDA_Data$POP2010
-USDA_Data$TractHispanicper = USDA_Data$TractHispanic/USDA_Data$POP2010
-
-
 
 #create new data and filter NA,NAN and Inf
 USDA_new <- USDA_Data[myvars]
@@ -43,86 +32,22 @@ USDA_new <- USDA_new[USDA_new$MedianFamilyIncome !=0,]
 USDA_new <- USDA_new[USDA_new$TractSNAPper <= 1 & USDA_new$TractHUNVper <= 1,]
 
 
+#standardize the household income to 0 and 1
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+
+USDA_new$MedianFamilyIncomesd <- range01(USDA_new$MedianFamilyIncome)
 
 ```
 
-## Outcome regression/ Average marginal effect
+## Outcome regression
 
-Assume strong ignorability
 Outcome regression Model wiht Lins method of including interaction terms:
 
-Function for point estimate and bootstrap inference:
 
 ```{r}
 
 
-Regression_estimate <- function(z,y,x){
-  
-  
-  x <- scale(x)
-  interact <- x*z
-  n <- ncol(interact)
-  
-  new_covars <- as.matrix(cbind(z,interact,x))
-  x <- as.matrix(x)
-  
-  regression_ate <- lm(y ~ new_covars)
-  
-  
-  coef_treatment <- regression_ate$coefficients[2]
-  coef_interact <- regression_ate$coefficients[3:(n+2)]
- 
-  
-  ate.reg <- coef_treatment + coef_interact %*% colMeans(x)
-  
-  return(ate.reg)
-  
-}
 
-
-Regression_bootstrap <- function(z,y,x, n.boot = 500){
-  
-  point.est  = Regression_estimate(z,y, x)
-  
-  ## nonparametric bootstrap
-  n.sample   = length(y)
-  x          = as.matrix(x)
-  boot.est   = replicate(n.boot, 
-                         {id.boot = sample(1:n.sample, n.sample, replace = TRUE)
-                         Regression_estimate(z[id.boot],y[id.boot], x[id.boot, ])})
-  
-  
-  boot.se    = sd(boot.est)
-  
-  res = rbind(point.est, boot.se)
-  rownames(res) = c("est", "se")
-  colnames(res) = c("Lins.est")
-  
-  return(res)
-  
-}
-
-
-```
-
-
-```{r}
-
-
-covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
-
-#Adding interaction terms and treatment
-
-x <- USDA_new[covars]
-z <- USDA_new$LA1and10
-y <- USDA_new$e.0.
-
-
-point.est <- Regression_estimate(z,y,x)
-
-results <- Regression_bootstrap(z,y,x)
-
-c(results[1,1]-1.96*results[2,1], results[1,1]+1.96*results[2,1])
 
 ```
 
@@ -132,7 +57,7 @@ Naive propensity score:
 
 ```{r}
 #income standardized or not, it doesnt effect the scores
-
+covars <- c( "MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
 
 x <- as.matrix(USDA_new[covars])
 x <- scale(x)
@@ -145,7 +70,7 @@ USDA_new$prop_scores <- results
 
 ```
 
-IPW Horvitz-Thompson estimator and IPW Hajek estimator and bootstrap inference
+IPW Horvitz-Thompson estimator and IPW Hajek estimator and bootstrap inferecne
 
 ```{r}
 
@@ -189,13 +114,10 @@ ATE point estimate on our data:
 
 ```{r}
 
-
-x <- USDA_new[covars]
-z <- USDA_new$LA1and10
-y <- USDA_new$e.0.
-
+x <- as.matrix(USDA_new[covars])
 x <- scale(x)
-
+y <- USDA_new$PovertyRate
+z <- USDA_new$LA1and10
 IPW.est <- ipw.est(z,y,x)
 IPW_HT <- IPW.est[1]
 IPW_Hajek <- IPW.est[2]
@@ -261,7 +183,7 @@ trunc.est
 #balance check with truncated
 Bcheck = sapply(1:dim(x)[2],
                 FUN = function(px){
-                  ipw.boot(z, x[, px], x,truncpscore=c(0.1, 0.9))[, 2]
+                  ipw.boot(z, x[, px], x,truncpscore=c(0.05, 0.95))[, 2]
                 })
 
 dat_balance = data.frame(est = Bcheck[1, ],
@@ -292,9 +214,6 @@ Doubly Robust estimator:
 
 
 ```{r}
-
-
-
 
 
 
