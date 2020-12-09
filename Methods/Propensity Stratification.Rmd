@@ -73,3 +73,58 @@ Neyman_SRE = function(z, y, x)
 
 ```
 
+```{r}
+covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
+
+x <- USDA_new[covars]
+z <- USDA_new$LA1and10
+y <- USDA_new$e.0.
+
+x <- scale(x)
+
+pscore <- glm(z ~ x, family = binomial)$fitted.values
+
+n.strata = c(5, 10, 20, 50, 80)
+strat.res = sapply(n.strata, 
+                   FUN = function(nn){
+                     q.pscore = quantile(pscore, (1:(nn-1))/nn)
+                     ps.strata = cut(pscore, breaks = c(0,q.pscore,1), 
+                                     labels = 1:nn)
+                     Neyman_SRE(z, y, ps.strata)             
+                   })
+
+rownames(strat.res) = c("est", "se")
+colnames(strat.res) = n.strata
+round(strat.res, 3)
+
+n <- 5
+Bcheck = sapply(1:dim(x)[2],
+                FUN = function(px){
+                  q.pscore = quantile(pscore, (1:(n-1))/n)
+                  ps.strata = cut(pscore, breaks = c(0,q.pscore,1), 
+                                  labels = 1:n)
+                  Neyman_SRE(z, x[, px], ps.strata)
+                })
+
+dat_balance = data.frame(est = Bcheck[1, ],
+                         upper = Bcheck[1, ] + 1.96*Bcheck[2, ],
+                         lower = Bcheck[1, ] - 1.96*Bcheck[2, ],
+                         cov = factor(1:ncol(x)))
+ggplot(dat_balance) + 
+  geom_errorbar(aes(x = cov,
+                    ymin = lower,
+                    ymax = upper),
+                alpha = 0.6) + 
+  geom_point(aes(x = cov,
+                 y = est),
+             alpha = 0.6) +
+  geom_hline(aes(yintercept = 0),
+             alpha = 0.3) + 
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y=element_blank()) +
+  xlab("balance check based on stratification with K=5")  
+
+```
+
