@@ -1,0 +1,179 @@
+---
+title: "Analysis"
+author: "Joshua Hug & Matthew Martinez"
+date: "12/12/2020"
+output: html_document
+---
+
+The following chunk loads, cleans the data and assigns to the environment the dataframe with the data as well as a vector with the name of all variables we are using.
+
+```{r Always run this chunk, warning=F}
+source("cleaning.R")
+source("functions.R")
+clean_and_load()
+```
+
+
+```{r Regression Outcome}
+set.seed(11)
+covs <- default_covs[c(-1,-2)]
+
+# the regression estimate is done using regression bootstrap function
+
+results <- Regression_bootstrap(z = USDA_new$LA1and10, y = USDA_new$lifeexp, x= USDA_new[covs])
+
+results
+
+# a confidence interval
+c(results[1,1]-1.96*results[2,1], results[1,1]+1.96*results[2,1])
+
+```
+
+
+The following code calculates the propensity score using logistic regression and plots a histogram
+
+```{r Propensity score analysis}
+library(ggplot2)
+library(magrittr)
+
+covs <- default_covs[c(-1,-2)]
+
+x <- as.matrix(USDA_new[covs])
+x <- scale(x)
+pred <- USDA_new$LA1and10
+
+# calculate the propensity score
+prop.logit <- glm(pred ~ x, family = "binomial")
+
+prop_pred <- predict(prop.logit,USDA_new[covs],type = "response")
+
+# assign to the original 
+USDA_new$prop_scores <- prop_pred
+
+USDA_new %>% ggplot(aes(x=prop_scores))+
+  geom_histogram()+
+  labs(title = "propensity score histogram", x="propensity score value")
+```
+
+
+We use various truncation methods
+
+```{r IPW estimators}
+set.seed(11)
+library(furrr)
+
+covs <- default_covs[c(-1,-2)]
+
+x <- as.matrix(USDA_new[covs])
+x <- scale(x)
+y <- USDA_new$lifeexp
+z <- USDA_new$LA1and10
+
+# a list of truncation levels used
+trunc.list = list(trunc0 = c(0,1), 
+                  trunc.01 = c(0.01, 0.99), 
+                  trunc.05 = c(0.05, 0.95), 
+                  trunc.1 = c(0.1, 0.9))
+
+# apply to various truncation levels 
+# I've used parallelization here through furrr
+
+plan(multisession,workers=parallel::detectCores())
+
+
+trunc.est_ipw = future_map(trunc.list,
+                   function(t){
+                     est = ipw.boot(z, y, x, truncpscore = t)
+                     round(est, 3)
+                   },.options = furrr_options(seed = TRUE))
+trunc.est_ipw
+
+
+```
+
+covariate balance check ipw
+
+```{r cb ipw}
+
+```
+
+
+```{r Propensity score stratification}
+set.seed(11)
+covs <- default_covs[c(-1,-2)]
+
+x <- USDA_new[covs]
+x <- scale(x)
+z <- USDA_new$LA1and10
+y <- USDA_new$lifeexp
+
+pscore <- glm(z ~ x, family = binomial)$fitted.values
+
+n.strata = c(5, 10, 20, 50, 80)
+strat.res = sapply(n.strata, 
+                   FUN = function(nn){
+                     q.pscore = quantile(pscore, (1:(nn-1))/nn)
+                     ps.strata = cut(pscore, breaks = c(0,q.pscore,1), 
+                                     labels = 1:nn)
+                     Neyman_SRE(z, y, ps.strata)             
+                   })
+
+rownames(strat.res) <- c("est", "se")
+colnames(strat.res) <- n.strata
+round(strat.res, 3)
+
+```
+
+Covariate Balance Check pscore matching
+
+```{r cb pscore}
+
+```
+
+
+
+```{r Doubly Robust}
+set.seed(11)
+library(furrr)
+
+
+covs <- default_covs[c(-1,-2)]
+
+x <- as.matrix(USDA_new[covs])
+x <- scale(x)
+y <- USDA_new$lifeexp
+z <- USDA_new$LA1and10
+
+plan(multisession,workers=parallel::detectCores())
+
+
+trunc.list = list(trunc0 = c(0,1), 
+                  trunc.01 = c(0.01, 0.99), 
+                  trunc.05 = c(0.05, 0.95), 
+                  trunc.1 = c(0.1, 0.9))
+trunc.est_dr = future_map(trunc.list,
+                   function(t){
+                     est = OS_ATE(z, y, x, truncpscore = t)
+                     round(est, 3)
+                   }, .options = furrr_options(seed = TRUE))
+trunc.est_dr
+
+```
+
+Regression Tree
+
+```{r}
+set.seed(11)
+
+library(bartCause)
+covs <- default_covs[c(-1,-2)]
+x <- USDA_new[covs]
+x <- scale(x)
+z <- USDA_new$LA1and10
+y <- USDA_new$lifeexp
+
+model <- bartc(y,z,x)
+
+summary(model)
+```
+

@@ -4,12 +4,10 @@ output: html_document
 ---
 ```{r}
 library(ggplot2)
-setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/USDA-Data")
-
 #USDA Data on food accessability by census tract
-USDA <- read.csv("USDA.csv")
+USDA <- read.csv("./data/USDA.csv")
 #CDC Data on average life expectancy by census tract
-life_exp <- read.csv("US_A.csv")
+life_exp <- read.csv("./data/US_A.csv")
 
 #removes some track data do to missing observations in life expectancy data, 74,000 rows to 65000 rows
 USDA_Data <- dplyr::inner_join(life_exp, USDA, by = c("Tract.ID"="CensusTract") )
@@ -22,8 +20,8 @@ Include important covariates: Median Household income, % of households who recie
 
 ```{r}
 #list covariates, response and treatment
-race <- c("TractWhiteper","TractHispanicper")
-myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+race <- c("TractBlackper","TractHispanicper")
+myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper",race)
 
 
 #normalize SNAP as a % of hoursing units in the tract, % of houses with no vehicle in the tract and % of each race in tract
@@ -54,7 +52,7 @@ Naive propensity score:
 
 ```{r}
 #income standardized or not, it doesnt effect the scores
-covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
+covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban",race)
 
 x <- as.matrix(USDA_new[covars])
 x <- scale(x)

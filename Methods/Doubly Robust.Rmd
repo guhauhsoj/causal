@@ -5,12 +5,10 @@ output: html_document
 
 ```{r}
 library(ggplot2)
-setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/USDA-Data")
-
 #USDA Data on food accessability by census tract
-USDA <- read.csv("USDA.csv")
+USDA <- read.csv("./data/USDA.csv")
 #CDC Data on average life expectancy by census tract
-life_exp <- read.csv("US_A.csv")
+life_exp <- read.csv("./data/US_A.csv")
 
 #removes some track data do to missing observations in life expectancy data, 74,000 rows to 65000 rows
 USDA_Data <- dplyr::inner_join(life_exp, USDA, by = c("Tract.ID"="CensusTract") )
@@ -23,8 +21,8 @@ Include important covariates: Median Household income, % of households who recie
 
 ```{r}
 #list covariates, response and treatment
-race <- c("TractWhiteper","TractHispanicper")
-myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper")
+race <- c("TractBlackper","TractHispanicper")
+myvars <- c("e.0.","LA1and10","PovertyRate","MedianFamilyIncome", "TractSNAPper","Urban","TractHUNVper",race)
 
 
 #normalize SNAP as a % of hoursing units in the tract, % of houses with no vehicle in the tract and % of each race in tract
@@ -50,7 +48,7 @@ USDA_new <- USDA_new[USDA_new$TractSNAPper <= 1 & USDA_new$TractHUNVper <= 1,]
 
 ## Doubly Robust estimator:
 
-Loading in the functions for doubly robust analysis
+Loading in the functions for doubly robust analysis (Thanks for Prof Ding for these functions).
 ```{r}
 
 
@@ -111,7 +109,7 @@ OS_ATE = function(z, y, x, n.boot = 2*10^2,
 
 Non-truncated doubly robust estimator
 ```{r}
-covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban")
+covars <- c("PovertyRate","MedianFamilyIncome","TractSNAPper","TractHUNVper","Urban",race)
 
 x <- USDA_new[covars]
 z <- USDA_new$LA1and10
@@ -183,6 +181,7 @@ dat_balance = data.frame(est = Bcheck[1, ],
                          lower = Bcheck[1, ] - 1.96*Bcheck[2, ],
                          cov = factor(1:ncol(x)))
 
+library(ggplot2)
 
 ggplot(dat_balance) + 
   geom_errorbar(aes(x = cov,
@@ -198,7 +197,8 @@ ggplot(dat_balance) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         axis.title.y=element_blank()) +
-  xlab("balance check based on weighting")
+  xlab("balance check based on weighting")+
+  ggtitle("Balance Check Doubly Robust")
 
 
 
