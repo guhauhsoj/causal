@@ -8,6 +8,7 @@ output: html_document
 The following chunk loads, cleans the data and assigns to the environment the dataframe with the data as well as a vector with the name of all variables we are using.
 
 ```{r Always run this chunk, warning=F}
+setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/causal/Methods/code")
 source("cleaning.R")
 source("functions.R")
 clean_and_load()
@@ -41,6 +42,7 @@ covs <- default_covs[c(-1,-2)]
 x <- as.matrix(USDA_new[covs])
 x <- scale(x)
 pred <- USDA_new$LA1and10
+
 
 # calculate the propensity score
 prop.logit <- glm(pred ~ x, family = "binomial")
@@ -174,6 +176,7 @@ covariate balance check
 ```{r ipw & dr}
 set.seed(11)
 library(ggplot2)
+library(gridExtra)
 library(dplyr)
 library(tidyr)
 library(furrr)
@@ -214,7 +217,7 @@ Bcheck_reg <-
     byrow = T
   )
 
-cov_balance_plot(title= "regression estimator", Bcheck_reg)
+reg <- cov_balance_plot(title= "regression estimator", Bcheck_reg)
 
 # HT estimator
 
@@ -232,7 +235,7 @@ Bcheck_HT <-
     byrow = T
   )
 
-cov_balance_plot(title= "HT estimator", Bcheck_HT)
+HT <- cov_balance_plot(title= "HT estimator", Bcheck_HT)
 
 
 # Hajek estimator
@@ -251,7 +254,7 @@ Bcheck_hj <-
     byrow = T
   )
 
-cov_balance_plot(title= "Hajek estimator", Bcheck_hj)
+Hajek <- cov_balance_plot(title= "Hajek estimator", Bcheck_hj)
 
 # doubly robust
 
@@ -270,7 +273,24 @@ Bcheck_dr <-
     byrow = T
   )
 
-cov_balance_plot(title= "Doubly Robust estimator", Bcheck_dr)
+DR <- cov_balance_plot(title= "Doubly Robust estimator", Bcheck_dr)
 
+
+#stratfied propensity score for 10 strata
+
+pscore <- glm(z ~ x, family = binomial)$fitted.values
+n <- 10
+Bcheck_strat = sapply(1:dim(x)[2],
+                FUN = function(px){
+                  q.pscore = quantile(pscore, (1:(n-1))/n)
+                  ps.strata = cut(pscore, breaks = c(0,q.pscore,1), 
+                                  labels = 1:n)
+                  Neyman_SRE(z, x[, px], ps.strata)
+                })
+
+strat <- cov_balance_plot(title= "Stratified estimator", Bcheck_strat)
+
+grid.arrange(reg,HT,Hajek,strat, ncol = 2) 
+DR
 
 ```
