@@ -151,7 +151,7 @@ trunc.est_dr
 
 Regression Tree
 
-```{r, eval = FALSE}
+```{r}
 set.seed(11)
 
 library(bartCause)
@@ -171,13 +171,15 @@ summary(model)
 
 covariate balance check
 
-```{r ipw & dr, eval = FALSE}
+```{r ipw & dr}
 set.seed(11)
 library(ggplot2)
+library(dplyr)
+library(tidyr)
 library(furrr)
-plan(multisession,workers=parallel::detectCores())
+plan(multisession, workers = parallel::detectCores())
 
-covs <- default_covs[c(-1,-2)]
+covs <- default_covs[c(-1, -2)]
 
 x <- as.matrix(USDA_new[covs])
 x <- scale(x)
@@ -186,32 +188,89 @@ z <- USDA_new$LA1and10
 
 
 ## balance check BCHECK is now a list so need to format
-Bcheck = future_map(1:dim(x)[2],
-                .f = function(px){
-                  OS_ATE(z, x[, px], x,truncpscore = c(0.1,0.9))
-                },.options=furrr_options(seed=TRUE))
+Bcheck_all = future_map(
+  1:dim(x)[2],
+  .f = function(px) {
+    OS_ATE(z, x[, px], x, truncpscore = c(0.1, 0.9))
+  },
+  .options = furrr_options(seed = TRUE)
+)
+
+asdf <- data.frame(Bcheck_all)
+asdf$type <- c("est", "se")
+
+# regression estimator
+
+clean_reg <-
+  asdf %>% pivot_longer(cols = !type) %>% slice(grep("reg", name))
+Bcheck_reg <-
+  matrix(
+    c(
+      clean_reg %>% filter(type == "est") %>% pull(value),
+      clean_reg %>% filter(type == "se") %>% pull(value)
+    ),
+    nrow = 2,
+    ncol = 7,
+    byrow = T
+  )
+
+cov_balance_plot(title= "regression estimator", Bcheck_reg)
+
+# HT estimator
+
+clean_HT <-
+  asdf %>% pivot_longer(cols = !type) %>% slice(grep("HT", name))
+
+Bcheck_HT <-
+  matrix(
+    c(
+      clean_HT %>% filter(type == "est") %>% pull(value),
+      clean_HT %>% filter(type == "se") %>% pull(value)
+    ),
+    nrow = 2,
+    ncol = 7,
+    byrow = T
+  )
+
+cov_balance_plot(title= "HT estimator", Bcheck_HT)
 
 
-# NEED TO FIX THIS
-dat_balance = data.frame(est = Bcheck[1, ],
-                         upper = Bcheck[1, ] + 1.96*Bcheck[2, ],
-                         lower = Bcheck[1, ] - 1.96*Bcheck[2, ],
-                         cov = factor(1:ncol(x)))
-ggplot(dat_balance) + 
-  geom_errorbar(aes(x = cov,
-                    ymin = lower,
-                    ymax = upper),
-                alpha = 0.6) + 
-  geom_point(aes(x = cov,
-                 y = est),
-             alpha = 0.6) +
-  geom_hline(aes(yintercept = 0),
-             alpha = 0.3) + 
-  theme_bw() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        axis.title.y=element_blank()) +
-  xlab("balance check based on weighting")+
-  title("truncated covariate balance")
+# Hajek estimator
+
+clean_hj <-
+  asdf %>% pivot_longer(cols = !type) %>% slice(grep("Hajek", name))
+
+Bcheck_hj <-
+  matrix(
+    c(
+      clean_hj %>% filter(type == "est") %>% pull(value),
+      clean_hj %>% filter(type == "se") %>% pull(value)
+    ),
+    nrow = 2,
+    ncol = 7,
+    byrow = T
+  )
+
+cov_balance_plot(title= "Hajek estimator", Bcheck_hj)
+
+# doubly robust
+
+
+clean_dr <-
+  asdf %>% pivot_longer(cols = !type) %>% slice(grep("DR", name))
+
+Bcheck_dr <-
+  matrix(
+    c(
+      clean_dr %>% filter(type == "est") %>% pull(value),
+      clean_dr %>% filter(type == "se") %>% pull(value)
+    ),
+    nrow = 2,
+    ncol = 7,
+    byrow = T
+  )
+
+cov_balance_plot(title= "Doubly Robust estimator", Bcheck_dr)
+
 
 ```

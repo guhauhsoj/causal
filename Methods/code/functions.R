@@ -159,4 +159,34 @@ OS_ATE = function(z, y, x, n.boot = 2*10^2,
   return(res)
 }
 
+# Covariate Balance
+
+
+
+cov_balance_plot <- function(title, Bcheck) {
+  dat_balance = data.frame(
+    est = Bcheck[1,],
+    upper = Bcheck[1,] + 1.96 * Bcheck[2,],
+    lower = Bcheck[1,] - 1.96 * Bcheck[2,],
+    cov = factor(1:ncol(x))
+  )
+  ggplot(dat_balance) +
+    geom_errorbar(aes(x = cov,
+                      ymin = lower,
+                      ymax = upper),
+                  alpha = 0.6) +
+    geom_point(aes(x = cov,
+                   y = est),
+               alpha = 0.6) +
+    geom_hline(aes(yintercept = 0),
+               alpha = 0.3) +
+    theme_bw() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.title.y = element_blank()
+    ) +
+    xlab("balance check based on weighting") +
+    ggtitle(paste("truncated covariate balance for", title))
+}
 
