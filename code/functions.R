@@ -1,4 +1,4 @@
-
+# most of these functions are from Professor Ding's class notes for STA256
 
 # Regression outcome
 
