@@ -2,18 +2,21 @@
 title: "Analysis"
 author: "Joshua Hug & Matthew Martinez"
 date: "12/12/2020"
-output: html_document
+output:
+  pdf_document: 
+    highlight: kate
 ---
 
 The following chunk loads, cleans the data and assigns to the environment the dataframe with the data as well as a vector with the name of all variables we are using.
 
-```{r Always run this chunk, warning=F}
-setwd("C:/Users/marti/Documents/Berkeley/Semester 3/STAT 256/Final Project/causal/Methods/code")
+```{r Always run this chunk, warning=F , message = F}
+#setwd("Current_location_of_file")
 source("cleaning.R")
 source("functions.R")
 clean_and_load()
 ```
 
+# Regression Outcome
 
 ```{r Regression Outcome}
 set.seed(11)
@@ -30,6 +33,8 @@ c(results[1,1]-1.96*results[2,1], results[1,1]+1.96*results[2,1])
 
 ```
 
+
+# Propensity Score
 
 The following code calculates the propensity score using logistic regression and plots a histogram
 
@@ -52,11 +57,14 @@ prop_pred <- predict(prop.logit,USDA_new[covs],type = "response")
 # assign to the original 
 USDA_new$prop_scores <- prop_pred
 
-USDA_new %>% ggplot(aes(x=prop_scores))+
-  geom_histogram()+
-  labs(title = "propensity score histogram", x="propensity score value")
+# Uncomment below for the propensity score histogram
+
+# USDA_new %>% ggplot(aes(x=prop_scores))+
+#   geom_histogram()+
+#   labs(title = "propensity score histogram", x="propensity score value")
 ```
 
+# IPW 
 
 We use various truncation methods
 
@@ -94,6 +102,7 @@ trunc.est_ipw
 ```
 
 
+# prop score stratification
 
 ```{r Propensity score stratification}
 set.seed(11)
@@ -121,7 +130,7 @@ round(strat.res, 3)
 
 ```
 
-
+# Doubly Robust
 
 ```{r Doubly Robust}
 set.seed(11)
@@ -151,9 +160,12 @@ trunc.est_dr
 
 ```
 
-Regression Tree
 
-```{r}
+# Regression Tree
+
+Regression Tree (this takes a very long time to run and so we don't include in knit)
+
+```{r, eval = F}
 set.seed(11)
 
 library(bartCause)
@@ -169,14 +181,13 @@ summary(model)
 ```
 
 
-
+# Covariate balance check
 
 covariate balance check
 
 ```{r ipw & dr}
 set.seed(11)
 library(ggplot2)
-library(gridExtra)
 library(dplyr)
 library(tidyr)
 library(furrr)
@@ -289,8 +300,16 @@ Bcheck_strat = sapply(1:dim(x)[2],
                 })
 
 strat <- cov_balance_plot(title= "Stratified estimator", Bcheck_strat)
+```
+
+
+This prints the previous chunks plots
+
+```{r plots out, eval=FALSE}
+library(gridExtra)
 
 grid.arrange(reg,HT,Hajek,strat, ncol = 2) 
 DR
 
 ```
+
